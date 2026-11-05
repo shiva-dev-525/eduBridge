@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const crypto = require('crypto');
 const { canMessage } = require('./lib/access');
 
@@ -12,12 +13,34 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const ROOT = __dirname;
-const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
-const UPLOADS = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(ROOT, 'uploads');
-for (const dir of [DATA, UPLOADS]) fs.mkdirSync(dir, { recursive: true });
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (isVercel ? path.join(os.tmpdir(), 'edubridge-data') : path.join(ROOT, 'data'));
+const UPLOADS = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : (isVercel ? path.join(os.tmpdir(), 'edubridge-uploads') : path.join(ROOT, 'uploads'));
+for (const dir of [DATA, UPLOADS]) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (err) { console.error(`Directory notice for ${dir}:`, err.message); }
+}
 const files = { users: 'users.json', doubts: 'doubts.json', resources: 'resources.json', sessions: 'sessions.json', exchanges: 'exchanges.json', reports: 'reports.json', messages: 'messages.json', learning: 'learning.json' };
-function read(name) { const p = path.join(DATA, files[name]); if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; } }
-function write(name, value) { fs.writeFileSync(path.join(DATA, files[name]), JSON.stringify(value, null, 2)); }
+function read(name) {
+  const p = path.join(DATA, files[name]);
+  if (!fs.existsSync(p)) {
+    try {
+      const rootSeed = path.join(ROOT, 'data', files[name]);
+      if (fs.existsSync(rootSeed)) {
+        fs.copyFileSync(rootSeed, p);
+      } else {
+        fs.writeFileSync(p, '[]');
+      }
+    } catch { return []; }
+  }
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; }
+}
+function write(name, value) {
+  try {
+    fs.writeFileSync(path.join(DATA, files[name]), JSON.stringify(value, null, 2));
+  } catch (err) {
+    console.error(`Failed to write ${name}:`, err.message);
+  }
+}
 function id() { return crypto.randomUUID(); }
 function safeUser(u) { const { password, ...safe } = u; return safe; }
 function cleanText(v, max = 2000) { return String(v || '').trim().slice(0, max); }
@@ -115,5 +138,10 @@ app.post('/api/learning', auth, (req,res) => {
   const index = all.findIndex(item => item.userId === req.user.id); if (index >= 0) all[index] = state; else all.push(state); write('learning', all); res.json(state);
 });
 app.use((req,res,next)=>{ if(req.path.startsWith('/api/')) return res.status(404).json({error:'API route not found.'}); next(); });
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('*', (req,res)=>res.sendFile(path.join(ROOT,'public','index.html')));
-app.listen(PORT, HOST, () => console.log(`EduBridge running at http://${HOST}:${PORT}`));
+if (!process.env.VERCEL) {
+  app.listen(PORT, HOST, () => console.log(`EduBridge running at http://${HOST}:${PORT}`));
+}
+
+module.exports = app;

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "EduBridge student mentorship and resource platform",
+  "main": "api/index.js",
   "scripts": {
     "start": "node edubridge/server.js",
     "build": "npm install --prefix edubridge",
@@ -10,6 +11,12 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "multer": "^2.5.0"
   }
 }
-
