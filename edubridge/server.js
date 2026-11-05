@@ -10,9 +10,10 @@ const { canMessage } = require('./lib/access');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
 const ROOT = __dirname;
-const DATA = path.join(ROOT, 'data');
-const UPLOADS = path.join(ROOT, 'uploads');
+const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
+const UPLOADS = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(ROOT, 'uploads');
 for (const dir of [DATA, UPLOADS]) fs.mkdirSync(dir, { recursive: true });
 const files = { users: 'users.json', doubts: 'doubts.json', resources: 'resources.json', sessions: 'sessions.json', exchanges: 'exchanges.json', reports: 'reports.json', messages: 'messages.json', learning: 'learning.json' };
 function read(name) { const p = path.join(DATA, files[name]); if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return []; } }
@@ -20,6 +21,10 @@ function write(name, value) { fs.writeFileSync(path.join(DATA, files[name]), JSO
 function id() { return crypto.randomUUID(); }
 function safeUser(u) { const { password, ...safe } = u; return safe; }
 function cleanText(v, max = 2000) { return String(v || '').trim().slice(0, max); }
+
+if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '2mb' }));
@@ -45,7 +50,7 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => { const users = read('users'); const user = users.find(u => u.email === String(req.body.email || '').toLowerCase()); if (!user || user.active === false || !(await bcrypt.compare(String(req.body.password || ''), user.password))) return res.status(401).json({ error: 'Email or password is incorrect.' }); if (req.body.role && req.body.role !== user.role) return res.status(403).json({ error: `This is a ${user.role} account. Choose the matching login.` }); req.session.userId = user.id; res.json({ user: safeUser(user) }); });
 app.post('/api/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
 app.get('/api/me', auth, (req, res) => res.json({ user: safeUser(req.user) }));
-app.patch('/api/profile', auth, (req, res) => { const users = read('users'); const u = users.find(x => x.id === req.user.id); for (const k of ['name','college','department','year','interests','bio','skills','exams','availability']) if (req.body[k] !== undefined) u[k] = cleanText(req.body[k], k === 'bio' ? 600 : 300); write('users', users); res.json({ user: safeUser(u) }); });
+app.patch('/api/profile', auth, (req, res) => { const users = read('users'); const u = users.find(x => x.id === req.user.id); if (!u) return res.status(404).json({ error: 'User not found.' }); for (const k of ['name','college','department','year','interests','bio','skills','exams','availability']) if (req.body[k] !== undefined) u[k] = cleanText(req.body[k], k === 'bio' ? 600 : 300); write('users', users); res.json({ user: safeUser(u) }); });
 app.get('/api/mentors', auth, (req, res) => { const q = cleanText(req.query.q, 100).toLowerCase(); const mentors = read('users').filter(u => u.role === 'mentor' && u.active !== false).filter(u => !q || [u.name,u.college,u.department,u.skills,u.exams,u.bio].join(' ').toLowerCase().includes(q)); res.json(mentors.map(safeUser)); });
 app.get('/api/mentors/:id', auth, (req, res) => { const u = read('users').find(x => x.id === req.params.id && x.role === 'mentor' && x.active !== false); if (!u) return res.status(404).json({ error: 'Mentor not found.' }); res.json(safeUser(u)); });
 app.get('/api/resources', auth, (req, res) => { const q = cleanText(req.query.q, 100).toLowerCase(); const items = read('resources').filter(r => r.status === 'approved' || r.ownerId === req.user.id).filter(r => !q || [r.title,r.subject,r.description,r.ownerName].join(' ').toLowerCase().includes(q)); res.json(items.sort((a,b) => b.createdAt.localeCompare(a.createdAt))); });
@@ -111,4 +116,4 @@ app.post('/api/learning', auth, (req,res) => {
 });
 app.use((req,res,next)=>{ if(req.path.startsWith('/api/')) return res.status(404).json({error:'API route not found.'}); next(); });
 app.get('*', (req,res)=>res.sendFile(path.join(ROOT,'public','index.html')));
-app.listen(PORT,()=>console.log(`EduBridge running at http://localhost:${PORT}`));
+app.listen(PORT, HOST, () => console.log(`EduBridge running at http://${HOST}:${PORT}`));

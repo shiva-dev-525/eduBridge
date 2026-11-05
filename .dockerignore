@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+edubridge/node_modules
+edubridge/.env
+edubridge/data/*.json
+!edubridge/data/.gitkeep
+edubridge/uploads/*
+!edubridge/uploads/.gitkeep
+

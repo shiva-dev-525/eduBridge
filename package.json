@@ -1,0 +1,15 @@
+{
+  "name": "edubridge-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EduBridge student mentorship and resource platform",
+  "scripts": {
+    "start": "node edubridge/server.js",
+    "build": "npm install --prefix edubridge",
+    "test": "npm test --prefix edubridge"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
